@@ -8,5 +8,6 @@ requires-python = ">=3.10"
 dependencies = [
   "gumpy>=1.2.4",
   "numpy>=1.25.2",
-  "pytest>=7.1.1"
+  "pytest>=7.1.1",
+  "piezo>=0.7"
 ]
