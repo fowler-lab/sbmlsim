@@ -5,7 +5,7 @@ import random
 import gumpy
 import piezo
 
-# maybe move some functions to separate file
+#* maybe move some functions to separate file
 # import sbmlsim_functions as sf
 
 
@@ -55,6 +55,8 @@ class batch:
     def generate_batch(
         self, n_samples, proportion_resistant, n_res=1, n_sus=1, output="allele",
     ):
+        # TODO: STOP codons in susceptible mutations ??
+        # TODO: make this way tidier
         #! TODO: ammend this
         if output == "allele":
             output_alleles = []
@@ -181,16 +183,17 @@ class batch:
                 output_alleles.append(sample_amino_acid_sequence)
 
             elif output == "mutations":
-                #! TODO: check dataframe output format and implement mutations output
+                # TODO: check dataframe output format and implement mutations output
                 # diff = self.reference_gene - sample_gene
                 # for i in diff.mutations:
                 #     print(i)
                 pass
             else:
                 raise ValueError("output can only be one of allele or mutations!")
-
+        
+        #! this will all change to a dataframe output
         if output_alleles:
             return output_alleles
         else:
-            #! TODO return dataframe / check output format
+            # TODO: return dataframe / check output format
             pass
