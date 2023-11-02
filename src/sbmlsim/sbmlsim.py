@@ -5,7 +5,7 @@ import random
 import gumpy
 import piezo
 
-#* maybe move some functions to separate file
+# * maybe move some functions to separate file
 # import sbmlsim_functions as sf
 
 
@@ -27,11 +27,8 @@ class batch:
         )
         self.codon_to_amino_acid = dict(zip(all_codons, aminoacids))
         self.amino_acid_to_codon = {}
-        for i, j in zip(aminoacids, all_codons):
-            if i in self.amino_acid_to_codon:
-                self.amino_acid_to_codon[i].append(j)
-            else:
-                self.amino_acid_to_codon[i] = [j]
+        for amino_acid, codon in zip(aminoacids, all_codons):
+            self.amino_acid_to_codon.setdefault(amino_acid, []).append(codon)
 
     def build_ref_gene(self, genbank_file):
         reference = gumpy.Genome(genbank_file)
@@ -190,7 +187,7 @@ class batch:
                 pass
             else:
                 raise ValueError("output can only be one of allele or mutations!")
-        
+
         #! this will all change to a dataframe output
         if output_alleles:
             return output_alleles
