@@ -1,6 +1,7 @@
 import numpy
 import copy
 import random
+import pandas as pd
 
 import gumpy
 import piezo
@@ -49,15 +50,24 @@ class batch:
         ]
         self.resistant_mutations = list(gene_resistant_mutations.MUTATION)
 
-    def generate_batch(
-        self, n_samples, proportion_resistant, n_res=1, n_sus=1, output="allele",
-    ):
+    def generate_batch(self, n_samples, proportion_resistant, n_res=1, n_sus=1):
         # TODO: STOP codons in susceptible mutations ??
         # TODO: make this way tidier
         #! TODO: ammend this
-        if output == "allele":
-            output_alleles = []
+        # if output == "allele":
+        #     output_alleles = []
         #!
+        output_df = pd.DataFrame(
+            columns=[
+                "sample",
+                "allele",
+                "label",
+                "num_res_mutations",
+                "res_mutations",
+                "num_sus_mutations",
+                "sus_mutations",
+            ]
+        ).set_index("sample")
         for n_sample in range(n_samples):
 
             sample_gene = copy.deepcopy(self.reference_gene)
@@ -173,24 +183,40 @@ class batch:
             # Generate either mutations or mutated allele
             sample_gene._translate_sequence()
             # print("SAMPLE %i, LABEL %s, %i resistant mutations, %i susceptible mutations" % (n_sample, label, number_resistant, number_susceptible))
-            if output == "allele":
-                sample_amino_acid_sequence = "".join(
-                    i for i in sample_gene.amino_acid_sequence
-                )
-                output_alleles.append(sample_amino_acid_sequence)
+            # if output == "allele":
+            #     sample_amino_acid_sequence = "".join(
+            #         i for i in sample_gene.amino_acid_sequence
+            #     )
+            #     output_alleles.append(sample_amino_acid_sequence)
 
-            elif output == "mutations":
-                # TODO: check dataframe output format and implement mutations output
-                # diff = self.reference_gene - sample_gene
-                # for i in diff.mutations:
-                #     print(i)
-                pass
-            else:
-                raise ValueError("output can only be one of allele or mutations!")
+            sample_amino_acid_sequence = "".join(
+                i for i in sample_gene.amino_acid_sequence
+            )
+
+            # elif output == "mutations":
+            #     # TODO: check dataframe output format and implement mutations output
+            #     # diff = self.reference_gene - sample_gene
+            #     # for i in diff.mutations:
+            #     #     print(i)
+            #     pass
+            # else:
+            #     raise ValueError("output can only be one of allele or mutations!")
+
+            # TODO: sort out resistant and susceptible mutations lists - code above needs to be split into resistant and susceptible
+            output_df.loc[n_sample] = [
+                sample_amino_acid_sequence,
+                label,
+                number_resistant,
+                "res list", #TODO: resistant mutations list
+                number_susceptible,
+                "sus list", #TODO: susceptible mutations list
+            ]
 
         #! this will all change to a dataframe output
-        if output_alleles:
-            return output_alleles
-        else:
-            # TODO: return dataframe / check output format
-            pass
+        # if output_alleles:
+        #     return output_alleles
+        # else:
+        #     # TODO: return dataframe / check output format
+        #     pass
+
+        return output_df
