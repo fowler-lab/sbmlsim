@@ -53,21 +53,23 @@ class batch:
     def generate_batch(self, n_samples, proportion_resistant, n_res=1, n_sus=1):
         # TODO: STOP codons in susceptible mutations ??
         # TODO: make this way tidier
-        #! TODO: ammend this
-        # if output == "allele":
-        #     output_alleles = []
-        #!
-        output_df = pd.DataFrame(
+
+        allele_df = pd.DataFrame(
             columns=[
                 "sample",
                 "allele",
                 "label",
                 "num_res_mutations",
-                "res_mutations",
                 "num_sus_mutations",
-                "sus_mutations",
             ]
         ).set_index("sample")
+
+        mutations_df = pd.DataFrame(
+            columns=["sample", "mutation", "mutation_label", "gene"]
+        ).set_index(
+            ["sample", "mutation"]
+        )  # ? multiindex correct here?
+
         for n_sample in range(n_samples):
 
             sample_gene = copy.deepcopy(self.reference_gene)
@@ -193,30 +195,25 @@ class batch:
                 i for i in sample_gene.amino_acid_sequence
             )
 
-            # elif output == "mutations":
-            #     # TODO: check dataframe output format and implement mutations output
-            #     # diff = self.reference_gene - sample_gene
-            #     # for i in diff.mutations:
-            #     #     print(i)
-            #     pass
-            # else:
-            #     raise ValueError("output can only be one of allele or mutations!")
-
-            # TODO: sort out resistant and susceptible mutations lists - code above needs to be split into resistant and susceptible
-            output_df.loc[n_sample] = [
+            # allele dataframe
+            allele_df.loc[n_sample] = [
                 sample_amino_acid_sequence,
                 label,
                 number_resistant,
-                "res list", #TODO: resistant mutations list
                 number_susceptible,
-                "sus list", #TODO: susceptible mutations list
             ]
 
-        #! this will all change to a dataframe output
-        # if output_alleles:
-        #     return output_alleles
-        # else:
-        #     # TODO: return dataframe / check output format
-        #     pass
+            # mutations dataframe
+            diff = self.reference_gene - sample_gene
+            for i in diff.mutations:
+                if i in selected_resistant_mutations:
+                    mut_label = "R"
+                else:
+                    mut_label = "S"
 
-        return output_df
+                mutations_df.loc[(n_sample, i), ["mutation_label", "gene"]] = [
+                    mut_label,
+                    self.gene,
+                ]
+
+        return allele_df, mutations_df
