@@ -11,16 +11,50 @@ import piezo
 
 
 class batch:
-    def __init__(self, gene, drug, catalogue_file, genbank_file):
+    """
+    Class to instantiate a batch of samples from a given gene and drug
+
+    Args:
+        gene: str, name of gene
+        drug: str, name of drug
+        catalogue_file: str, path to catalogue file
+        genbank_file: str, path to genbank file
+
+    Example:
+        sbmlsim.batch(gene="gyrA", drug="ciprofloxacin", catalogue_file="catalogue.csv", genbank_file="NC_000962.3.gbk")
+    """
+
+    def __init__(
+        self,
+        gene=None,
+        drug=None,
+        catalogue_file=None,
+        genbank_file=None,
+        resistant_mutations=None,
+    ):
         self.gene = gene
         self.drug = drug
-        self.catalogue = piezo.ResistanceCatalogue(catalogue_file)
+        assert (catalogue_file is not None) != (
+            resistant_mutations is not None
+        ), "Either catalogue_file or resistant_mutations must be specified"
 
-        self.define_lookups()
-        self.build_ref_gene(genbank_file)
-        self.get_mutations()
+        if catalogue_file is not None:
+            self.catalogue = piezo.ResistanceCatalogue(catalogue_file)
+            self.resistant_mutations = self._get_mutations()  # make this an argument
+        else:
+            assert isinstance(resistant_mutations, list)
+            self.resistant_mutations = resistant_mutations
 
-    def define_lookups(self):
+        # call private methods to complete instantiation
+        self._define_lookups()
+        self.reference_gene = self._build_ref_gene(genbank_file)
+
+    def __repr__(self) -> str:
+        line = ""
+        line += f"gene: {self.gene}\n"
+        return line
+
+    def _define_lookups(self):
         aminoacids = "FFLLSSSSYY!!CC!WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
         bases = ["t", "c", "a", "g"]
         all_codons = numpy.array(
@@ -31,11 +65,15 @@ class batch:
         for amino_acid, codon in zip(aminoacids, all_codons):
             self.amino_acid_to_codon.setdefault(amino_acid, []).append(codon)
 
-    def build_ref_gene(self, genbank_file):
+    def _build_ref_gene(self, genbank_file):
+        # instantiate a gumpy Genome object
         reference = gumpy.Genome(genbank_file)
-        self.reference_gene = reference.build_gene(self.gene)
 
-    def get_mutations(self):
+        # return the gene of interest
+        return reference.build_gene(self.gene)
+
+    def _get_mutations(self):
+        # subset down to mutations that are missense (not premature stop) SNPs in the CDS of the gene of interest
         specific_resistance_mutations = self.catalogue.catalogue.rules[
             (self.catalogue.catalogue.rules.PREDICTION == "R")
             & (self.catalogue.catalogue.rules.MUTATION_TYPE == "SNP")
@@ -44,11 +82,12 @@ class batch:
             & (self.catalogue.catalogue.rules.POSITION != "*")
         ]
 
+        # subset down to only those mutations that are in the gene of interest for the specified drug
         gene_resistant_mutations = specific_resistance_mutations[
             (specific_resistance_mutations.DRUG == self.drug)
             & (specific_resistance_mutations.GENE == self.gene)
         ]
-        self.resistant_mutations = list(gene_resistant_mutations.MUTATION)
+        return list(gene_resistant_mutations.MUTATION)
 
     def _get_sample_type(self, proportion_resistant):
         if random.random() < proportion_resistant:
@@ -60,7 +99,7 @@ class batch:
 
     def _get_resistant_mutations(self, n_res, distribution, sample_gene):
         if distribution == "poisson":
-            # TODO: This smtms leads to samples labeled "R" that are not resistant if n_res is small and hence number_resistant is 0
+            # BUG: This smtms leads to samples labeled "R" that are not resistant if n_res is small and hence number_resistant is 0
             number_resistant = numpy.random.poisson(n_res)
         else:
             # TODO: Implement other distribution functions
@@ -157,8 +196,24 @@ class batch:
     def generate_batch(
         self, n_samples, proportion_resistant, n_res=1, n_sus=1, distribution="poisson"
     ):
+        """
+        Generate a batch of samples given the supplied parameters.
+
+        Args:
+            n_samples: int, number of samples to generate
+            proportion_resistant: float, proportion of samples that are resistant
+            n_res: int, mean number of resistant mutations per resistant sample
+            n_sus: int, mean number of susceptible mutations per susceptible sample
+            distribution: str, distribution to use for number of resistant mutations per resistant sample (currently only poission is implemented)
+
+        Returns:
+            allele_df: pandas DataFrame with one row per sample
+            mutations_df: pandas DataFrame with one row per mutation per drug per sample
+        """
+
         # TODO: STOP codons in susceptible mutations ??
         # TODO: make this way tidier
+        # BUG: if n_res is small, number_resistant can be 0, but then the sample is still labeled "R" even though it is not resistant
 
         allele_df = pd.DataFrame(
             columns=[
@@ -172,9 +227,7 @@ class batch:
 
         mutations_df = pd.DataFrame(
             columns=["sample", "mutation", "mutation_label", "gene"]
-        ).set_index(
-            ["sample", "mutation"]
-        )  # ? multiindex correct here?
+        ).set_index(["sample", "mutation"])
 
         for n_sample in range(n_samples):
             sample_gene = copy.deepcopy(self.reference_gene)
