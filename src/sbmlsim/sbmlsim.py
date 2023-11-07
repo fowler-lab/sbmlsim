@@ -50,7 +50,113 @@ class batch:
         ]
         self.resistant_mutations = list(gene_resistant_mutations.MUTATION)
 
-    def generate_batch(self, n_samples, proportion_resistant, n_res=1, n_sus=1):
+    def _get_sample_type(self, proportion_resistant):
+        if random.random() < proportion_resistant:
+            label = "R"
+        else:
+            label = "S"
+
+        return label
+
+    def _get_resistant_mutations(self, n_res, distribution, sample_gene):
+        if distribution == "poisson":
+            # TODO: This smtms leads to samples labeled "R" that are not resistant if n_res is small and hence number_resistant is 0
+            number_resistant = numpy.random.poisson(n_res)
+        else:
+            # TODO: Implement other distribution functions
+            pass
+
+        selected_resistant_mutations = random.choices(
+            self.resistant_mutations, k=number_resistant
+        )
+
+        # first, identify the codons being mutated as we will want to avoid these for susceptible mutations
+        positions_altered = []
+        for mutation in selected_resistant_mutations:
+            aa_pos = int(mutation[1:-1])
+            positions_altered.append(aa_pos)
+
+        # Get amino acid positions that are not altered by selected resistant mutations
+        remaining_aa_positions = sample_gene.amino_acid_number[
+            ~numpy.isin(sample_gene.amino_acid_number, positions_altered)
+        ]
+
+        return number_resistant, selected_resistant_mutations, remaining_aa_positions
+
+    def _get_susceptible_mutations(self, n_sus, remaining_aa_positions, sample_gene):
+        # Work out susceptible mutations
+        number_susceptible = numpy.random.poisson(n_sus)
+
+        selected_susceptible_mutations = []
+
+        # now randomly choose some susceptible mutations (i.e. "uniformly")
+        for susceptible_codon in random.choices(
+            remaining_aa_positions, k=number_susceptible
+        ):
+            ref_codon = sample_gene.codons[
+                sample_gene.amino_acid_number == susceptible_codon
+            ][0]
+            ref_aa = self.codon_to_amino_acid.get(ref_codon)
+
+            possible_alt_codons = [
+                alt_codon
+                for alt_codon, alt_aa in self.codon_to_amino_acid.items()
+                if alt_aa != ref_aa and alt_aa != "!"  # and ref_aa != "!"
+            ]
+
+            possible_alt_mutations = [
+                f"{ref_aa}{susceptible_codon}{self.codon_to_amino_acid.get(alt_codon)}"
+                for alt_codon in possible_alt_codons
+                if sum(1 for a, b in zip(ref_codon, alt_codon) if a != b) == 1
+                and self.codon_to_amino_acid.get(alt_codon)
+                not in self.resistant_mutations
+            ]
+
+            if possible_alt_mutations:
+                selected_susceptible_mutations.append(
+                    random.choice(possible_alt_mutations)
+                )
+
+        return number_susceptible, selected_susceptible_mutations
+
+    def _apply_mutations(self, selected_mutations, sample_gene):
+        for mutation in selected_mutations:
+            ref_aa = mutation[0]
+            alt_aa = mutation[-1]
+            aa_pos = int(mutation[1:-1])
+
+            ref_codon = sample_gene.codons[sample_gene.amino_acid_number == aa_pos][0]
+
+            # Get base changes
+            alt_codon = None
+            for codon in self.amino_acid_to_codon[alt_aa]:
+                counter = sum(1 for a, b in zip(ref_codon, codon) if a != b)
+                if counter == 1:
+                    alt_codon = codon
+                    break
+
+            base_pos = 3 * aa_pos - 2
+            for i, j in zip(ref_codon, alt_codon):
+                if i != j:
+                    ref_base = i
+                    alt_base = j
+                    break
+                base_pos += 1
+
+            assert (
+                self.reference_gene.nucleotide_sequence[
+                    self.reference_gene.nucleotide_number == base_pos
+                ][0]
+                == ref_base
+            )
+
+            sample_gene.nucleotide_sequence[
+                sample_gene.nucleotide_number == base_pos
+            ] = alt_base
+
+    def generate_batch(
+        self, n_samples, proportion_resistant, n_res=1, n_sus=1, distribution="poisson"
+    ):
         # TODO: STOP codons in susceptible mutations ??
         # TODO: make this way tidier
 
@@ -71,116 +177,39 @@ class batch:
         )  # ? multiindex correct here?
 
         for n_sample in range(n_samples):
-
             sample_gene = copy.deepcopy(self.reference_gene)
 
             # Work out resistant mutations
-            if random.random() < proportion_resistant:
-                label = "R"
-                # assuming that a Poisson distribution describes the expected number
-                number_resistant = numpy.random.poisson(n_res)
+            label = self._get_sample_type(proportion_resistant)
+
+            if label == "R":
+                (
+                    number_resistant,
+                    selected_resistant_mutations,
+                    remaining_aa_positions,
+                ) = self._get_resistant_mutations(n_res, distribution, sample_gene)
+
             else:
-                label = "S"
                 number_resistant = 0
+                selected_resistant_mutations = []
+                positions_altered = []
+                remaining_aa_positions = sample_gene.amino_acid_number[
+                    ~numpy.isin(sample_gene.amino_acid_number, positions_altered)
+                ]
 
-            selected_resistant_mutations = random.choices(
-                self.resistant_mutations, k=number_resistant
+            (
+                number_susceptible,
+                selected_susceptible_mutations,
+            ) = self._get_susceptible_mutations(
+                n_sus, remaining_aa_positions, sample_gene
             )
-
-            # first, identify the codons being mutated as we will want to avoid these for susceptible mutations
-            positions_altered = []
-            for mutation in selected_resistant_mutations:
-                aa_pos = int(mutation[1:-1])
-                positions_altered.append(aa_pos)
-
-            # Get amino acid positions that are not altered by selected resistant mutations
-            remaining_aa_positions = sample_gene.amino_acid_number[
-                ~numpy.isin(sample_gene.amino_acid_number, positions_altered)
-            ]
-
-            # Work out susceptible mutations
-            number_susceptible = numpy.random.poisson(n_sus)
-
-            selected_susceptible_mutations = []
-
-            # now randomly choose some susceptible mutations (i.e. "uniformly")
-            for susceptible_codon in random.choices(
-                remaining_aa_positions, k=number_susceptible
-            ):
-
-                ref_codon = sample_gene.codons[
-                    sample_gene.amino_acid_number == susceptible_codon
-                ][0]
-                ref_aa = self.codon_to_amino_acid[ref_codon]
-
-                possible_alt_aa = []
-
-                for alt_codon in self.codon_to_amino_acid:
-
-                    # no synoymous mutations
-                    if self.codon_to_amino_acid[alt_codon] != ref_aa:
-                        possible_aa = self.codon_to_amino_acid[alt_codon]
-
-                        # no premature Stop codons -- may want to make this a parameter in future
-                        if possible_aa != "!":
-                            n_snps = sum(
-                                1 for a, b in zip(ref_codon, alt_codon) if a != b
-                            )
-
-                            # only look for SNPs and mutations not in our list of resistance associated mutations
-                            if (
-                                n_snps == 1
-                                and possible_aa not in self.resistant_mutations
-                            ):
-                                possible_alt_aa.append(possible_aa)
-
-                alt_aa = random.choice(possible_alt_aa)
-
-                alt_mutation = ref_aa + str(susceptible_codon) + alt_aa
-
-                selected_susceptible_mutations.append(alt_mutation)
 
             selected_mutations = (
                 selected_resistant_mutations + selected_susceptible_mutations
             )
 
             # Get mutations for sample gene
-            for mutation in selected_mutations:
-
-                ref_aa = mutation[0]
-                alt_aa = mutation[-1]
-                aa_pos = int(mutation[1:-1])
-
-                ref_codon = sample_gene.codons[sample_gene.amino_acid_number == aa_pos][
-                    0
-                ]
-
-                # Get base changes
-                alt_codon = None
-                for codon in self.amino_acid_to_codon[alt_aa]:
-                    counter = sum(1 for a, b in zip(ref_codon, codon) if a != b)
-                    if counter == 1:
-                        alt_codon = codon
-                        break
-
-                base_pos = 3 * aa_pos - 2
-                for i, j in zip(ref_codon, alt_codon):
-                    if i != j:
-                        ref_base = i
-                        alt_base = j
-                        break
-                    base_pos += 1
-
-                assert (
-                    self.reference_gene.nucleotide_sequence[
-                        self.reference_gene.nucleotide_number == base_pos
-                    ][0]
-                    == ref_base
-                )
-
-                sample_gene.nucleotide_sequence[
-                    sample_gene.nucleotide_number == base_pos
-                ] = alt_base
+            self._apply_mutations(selected_mutations, sample_gene)
 
             # Generate either mutations or mutated allele
             sample_gene._translate_sequence()
