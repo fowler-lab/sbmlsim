@@ -99,8 +99,9 @@ class batch:
 
     def _get_resistant_mutations(self, n_res, distribution, sample_gene):
         if distribution == "poisson":
-            # BUG: This smtms leads to samples labeled "R" that are not resistant if n_res is small and hence number_resistant is 0
-            number_resistant = numpy.random.poisson(n_res)
+            number_resistant = 0
+            while number_resistant == 0:
+                number_resistant = numpy.random.poisson(n_res)
         else:
             # TODO: Implement other distribution functions
             pass
