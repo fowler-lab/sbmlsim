@@ -10,7 +10,7 @@ import piezo
 # import sbmlsim_functions as sf
 
 
-class batch:
+class Batch:
     """
     Class to instantiate a batch of samples from a given gene and drug
 
