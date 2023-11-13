@@ -6,9 +6,6 @@ import pandas as pd
 import gumpy
 import piezo
 
-# * maybe move some functions to separate file
-# import sbmlsim_functions as sf
-
 
 class Batch:
     """
@@ -32,29 +29,65 @@ class Batch:
         genbank_file=None,
         resistant_mutations=None,
     ):
+        # TODO: allow a list of genes to be specified for e.g. gyrA and gyrB
         self.gene = gene
         self.drug = drug
+        self.genbank_file = genbank_file
+        self.catalogue_file = catalogue_file
+
+        # allow a user to either provide a catalogue file or a list of resistant mutations
         assert (catalogue_file is not None) != (
             resistant_mutations is not None
         ), "Either catalogue_file or resistant_mutations must be specified"
 
         if catalogue_file is not None:
             self.catalogue = piezo.ResistanceCatalogue(catalogue_file)
-            self.resistant_mutations = self._get_mutations()  # make this an argument
+            resistant_mutations = self._get_mutations()  # make this an argument
         else:
             assert isinstance(resistant_mutations, list)
-            self.resistant_mutations = resistant_mutations
+            resistant_mutations = resistant_mutations
+
+        self.resistant_mutations = pd.DataFrame(
+            resistant_mutations, columns=["mutation"]
+        )
+
+        # extract the position of each mutation
+        def find_positions(row):
+            return int(row.mutation[1:-1])
+
+        self.resistant_mutations["position"] = self.resistant_mutations.apply(
+            find_positions, axis=1
+        )
+
+        # since each position can have >1 resistance-conferring mutation, we need to
+        # identify the unique positions that are resistant to choose from later
+        self.resistant_positions = list(self.resistant_mutations.position.unique())
 
         # call private methods to complete instantiation
         self._define_lookups()
-        self.reference_gene = self._build_ref_gene(genbank_file)
+
+        # retain the Genome object as it does take a while to instantiate
+        self.reference_genome = gumpy.Genome(genbank_file)
+
+        # build the required Gene object
+        self.reference_gene = self.reference_genome.build_gene(self.gene)
 
     def __repr__(self) -> str:
+        # print a summary of the Batch object
+
         line = ""
-        line += f"gene: {self.gene}\n"
+        line += f"Gene: {self.gene}\n"
+        line += f"Drug: {self.drug}\n"
+        line += f"GenBank file: {self.genbank_file}\n"
+        if hasattr(self, "catalogue"):
+            line += f"Catalogue: {self.catalogue_file}\n"
+        if hasattr(self, "resistant_mutations"):
+            line += f"Number of resistant mutations: {len(self.resistant_mutations)}\n"
         return line
 
     def _define_lookups(self):
+        # build the various dicts to allow us to convert from amino acid to codon and vice versa
+
         aminoacids = "FFLLSSSSYY!!CC!WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
         bases = ["t", "c", "a", "g"]
         all_codons = numpy.array(
@@ -65,15 +98,9 @@ class Batch:
         for amino_acid, codon in zip(aminoacids, all_codons):
             self.amino_acid_to_codon.setdefault(amino_acid, []).append(codon)
 
-    def _build_ref_gene(self, genbank_file):
-        # instantiate a gumpy Genome object
-        reference = gumpy.Genome(genbank_file)
-
-        # return the gene of interest
-        return reference.build_gene(self.gene)
-
     def _get_mutations(self):
         # subset down to mutations that are missense (not premature stop) SNPs in the CDS of the gene of interest
+
         specific_resistance_mutations = self.catalogue.catalogue.rules[
             (self.catalogue.catalogue.rules.PREDICTION == "R")
             & (self.catalogue.catalogue.rules.MUTATION_TYPE == "SNP")
@@ -87,9 +114,12 @@ class Batch:
             (specific_resistance_mutations.DRUG == self.drug)
             & (specific_resistance_mutations.GENE == self.gene)
         ]
+
         return list(gene_resistant_mutations.MUTATION)
 
     def _get_sample_type(self, proportion_resistant):
+        # randomly assign a label to the sample
+
         if random.random() < proportion_resistant:
             label = "R"
         else:
@@ -98,72 +128,109 @@ class Batch:
         return label
 
     def _get_resistant_mutations(self, n_res, distribution, sample_gene):
+        # choose resistance-conferring mutations for a sample
+
         if distribution == "poisson":
             number_resistant = 0
             while number_resistant == 0:
                 number_resistant = numpy.random.poisson(n_res)
         else:
             # TODO: Implement other distribution functions
-            pass
+            raise NotImplementedError(
+                'Only "poisson" distribution is currently implemented'
+            )
 
-        selected_resistant_mutations = random.choices(
-            self.resistant_mutations, k=number_resistant
+        assert (
+            number_resistant >= 0
+        ), "a resistant sample must have at least one resistance-conferring mutation"
+
+        # randomly choose some positions to mutate
+        selected_resistant_positions = random.sample(
+            self.resistant_positions, k=number_resistant
         )
 
-        # first, identify the codons being mutated as we will want to avoid these for susceptible mutations
-        positions_altered = []
+        # for each position, randomly choose a mutation to allow for a position having more than one mutation
+        selected_resistant_mutations = []
+        for i in selected_resistant_positions:
+            df = self.resistant_mutations[self.resistant_mutations.position == i]
+            value = df.sample(n=1).mutation.values[0]
+            selected_resistant_mutations.append(value)
+
+        assert len(selected_resistant_mutations) == len(
+            set(selected_resistant_mutations)
+        ), "cannot have duplicate mutations"
+
+        # insist we cannot mutate to Stop codons
         for mutation in selected_resistant_mutations:
-            aa_pos = int(mutation[1:-1])
-            positions_altered.append(aa_pos)
+            assert mutation[-1] != "!", "cannot mutate to STOP codon"
 
         # Get amino acid positions that are not altered by selected resistant mutations
         remaining_aa_positions = sample_gene.amino_acid_number[
-            ~numpy.isin(sample_gene.amino_acid_number, positions_altered)
+            ~numpy.isin(sample_gene.amino_acid_number, selected_resistant_positions)
         ]
 
         return number_resistant, selected_resistant_mutations, remaining_aa_positions
 
     def _get_susceptible_mutations(self, n_sus, remaining_aa_positions, sample_gene):
-        # Work out susceptible mutations
+        # choose susceptible mutations for a sample
+
+        # randomly choose a number of susceptible mutations
         number_susceptible = numpy.random.poisson(n_sus)
 
         selected_susceptible_mutations = []
 
-        # now randomly choose some susceptible mutations (i.e. "uniformly")
-        for susceptible_codon in random.choices(
-            remaining_aa_positions, k=number_susceptible
+        # now randomly choose from positions which have no resistant-conferring mutation
+        for susceptible_position in random.sample(
+            list(remaining_aa_positions), k=number_susceptible
         ):
+            # find out the wildtype codon
             ref_codon = sample_gene.codons[
-                sample_gene.amino_acid_number == susceptible_codon
+                sample_gene.amino_acid_number == susceptible_position
             ][0]
+
+            # find out the wildtype amino acid
             ref_aa = self.codon_to_amino_acid.get(ref_codon)
 
+            # exclude synonymous mutations and any mutation involving a STOP codon
             possible_alt_codons = [
                 alt_codon
                 for alt_codon, alt_aa in self.codon_to_amino_acid.items()
-                if alt_aa != ref_aa and alt_aa != "!"  # and ref_aa != "!"
+                if alt_aa != ref_aa and alt_aa != "!" and ref_aa != "!"
             ]
 
+            # exclude resistant conferring mutations
             possible_alt_mutations = [
-                f"{ref_aa}{susceptible_codon}{self.codon_to_amino_acid.get(alt_codon)}"
+                f"{ref_aa}{susceptible_position}{self.codon_to_amino_acid.get(alt_codon)}"
                 for alt_codon in possible_alt_codons
                 if sum(1 for a, b in zip(ref_codon, alt_codon) if a != b) == 1
                 and self.codon_to_amino_acid.get(alt_codon)
                 not in self.resistant_mutations
             ]
 
+            # select one of these possible
             if possible_alt_mutations:
                 selected_susceptible_mutations.append(
-                    random.choice(possible_alt_mutations)
+                    random.sample(possible_alt_mutations, k=1)[0]
                 )
 
         return number_susceptible, selected_susceptible_mutations
 
     def _apply_mutations(self, selected_mutations, sample_gene):
+        # apply mutations to sample gene
+
         for mutation in selected_mutations:
             ref_aa = mutation[0]
             alt_aa = mutation[-1]
             aa_pos = int(mutation[1:-1])
+
+            assert (
+                ref_aa
+                == sample_gene.amino_acid_sequence[
+                    sample_gene.amino_acid_number == aa_pos
+                ][0]
+            ), "reference amino acid supplied in mutation does not match gene!"
+
+            assert alt_aa != "!", "cannot mutate to STOP codon"
 
             ref_codon = sample_gene.codons[sample_gene.amino_acid_number == aa_pos][0]
 
@@ -194,11 +261,11 @@ class Batch:
                 sample_gene.nucleotide_number == base_pos
             ] = alt_base
 
-    def generate_batch(
+    def generate(
         self, n_samples, proportion_resistant, n_res=1, n_sus=1, distribution="poisson"
     ):
         """
-        Generate a batch of samples given the supplied parameters.
+        Generate a batch of samples.
 
         Args:
             n_samples: int, number of samples to generate
@@ -208,34 +275,24 @@ class Batch:
             distribution: str, distribution to use for number of resistant mutations per resistant sample (currently only poission is implemented)
 
         Returns:
-            allele_df: pandas DataFrame with one row per sample
-            mutations_df: pandas DataFrame with one row per mutation per drug per sample
+            samples: pandas DataFrame with one row per sample
+            mutations: pandas DataFrame with one row per mutation per drug per sample
         """
 
-        # TODO: STOP codons in susceptible mutations ??
         # TODO: make this way tidier
-        # BUG: if n_res is small, number_resistant can be 0, but then the sample is still labeled "R" even though it is not resistant
 
-        allele_df = pd.DataFrame(
-            columns=[
-                "sample",
-                "allele",
-                "label",
-                "num_res_mutations",
-                "num_sus_mutations",
-            ]
-        ).set_index("sample")
+        samples_rows = []
+        mutations_rows = []
 
-        mutations_df = pd.DataFrame(
-            columns=["sample", "mutation", "mutation_label", "gene"]
-        ).set_index(["sample", "mutation"])
-
+        # iterate through the required number of samples
         for n_sample in range(n_samples):
+            # make a copy of the reference gene
             sample_gene = copy.deepcopy(self.reference_gene)
 
-            # Work out resistant mutations
+            # decide the phenotype of the sample
             label = self._get_sample_type(proportion_resistant)
 
+            # determine the resistant mutations, if any
             if label == "R":
                 (
                     number_resistant,
@@ -246,45 +303,46 @@ class Batch:
             else:
                 number_resistant = 0
                 selected_resistant_mutations = []
-                positions_altered = []
-                remaining_aa_positions = sample_gene.amino_acid_number[
-                    ~numpy.isin(sample_gene.amino_acid_number, positions_altered)
-                ]
+                remaining_aa_positions = sample_gene.amino_acid_number
 
-            (
-                number_susceptible,
-                selected_susceptible_mutations,
-            ) = self._get_susceptible_mutations(
-                n_sus, remaining_aa_positions, sample_gene
-            )
+            # determine the susceptible mutations, if any
+            if n_sus > 0:
+                (
+                    number_susceptible,
+                    selected_susceptible_mutations,
+                ) = self._get_susceptible_mutations(
+                    n_sus, remaining_aa_positions, sample_gene
+                )
+            else:
+                selected_susceptible_mutations = []
+                number_susceptible = 0
 
+            # combine the resistant and susceptible mutations
             selected_mutations = (
                 selected_resistant_mutations + selected_susceptible_mutations
             )
 
-            # Get mutations for sample gene
+            # apply the mutations to the sample gene
             self._apply_mutations(selected_mutations, sample_gene)
 
-            # Generate either mutations or mutated allele
+            # translate the nucleotide sequence to amino acids
             sample_gene._translate_sequence()
-            # print("SAMPLE %i, LABEL %s, %i resistant mutations, %i susceptible mutations" % (n_sample, label, number_resistant, number_susceptible))
-            # if output == "allele":
-            #     sample_amino_acid_sequence = "".join(
-            #         i for i in sample_gene.amino_acid_sequence
-            #     )
-            #     output_alleles.append(sample_amino_acid_sequence)
 
+            # create a string of the amino acid sequence
             sample_amino_acid_sequence = "".join(
                 i for i in sample_gene.amino_acid_sequence
             )
 
-            # allele dataframe
-            allele_df.loc[n_sample] = [
+            # construct the row for the sample table
+            sample_metadata = [
+                n_sample,
                 sample_amino_acid_sequence,
                 label,
                 number_resistant,
                 number_susceptible,
             ]
+
+            samples_rows.append(sample_metadata)
 
             # mutations dataframe
             diff = self.reference_gene - sample_gene
@@ -293,10 +351,23 @@ class Batch:
                     mut_label = "R"
                 else:
                     mut_label = "S"
+                mutations_rows.append([n_sample, i, mut_label, self.gene])
 
-                mutations_df.loc[(n_sample, i), ["mutation_label", "gene"]] = [
-                    mut_label,
-                    self.gene,
-                ]
+        samples = pd.DataFrame(
+            samples_rows,
+            columns=[
+                "sample_id",
+                "allele",
+                "phenotype_label",
+                "number_resistant_mutations",
+                "number_susceptible_mutations",
+            ],
+        )
+        samples.set_index("sample_id", inplace=True)
 
-        return allele_df, mutations_df
+        mutations = pd.DataFrame(
+            mutations_rows, columns=["sample_id", "mutation", "mutation_label", "gene"]
+        )
+        mutations.set_index(["sample_id", "mutation"], inplace=True)
+
+        return samples, mutations
