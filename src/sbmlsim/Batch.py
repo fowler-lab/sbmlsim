@@ -1,10 +1,11 @@
 import numpy
-import copy
 import random
 import pandas as pd
 
 import gumpy
 import piezo
+
+import sbmlsim
 
 
 class Batch:
@@ -97,8 +98,7 @@ class Batch:
 
         # iterate through the required number of samples
         for n_sample in range(n_samples):
-            # make a copy of the reference gene
-            sample_gene = copy.deepcopy(self.reference_gene)
+            sample = sbmlsim.Sample(self.reference_gene)
 
             # decide the phenotype of the sample
             label = self._get_sample_type(proportion_resistant)
@@ -109,12 +109,12 @@ class Batch:
                     number_resistant,
                     selected_resistant_mutations,
                     remaining_aa_positions,
-                ) = self._get_resistant_mutations(n_res, distribution, sample_gene)
+                ) = self._get_resistant_mutations(n_res, distribution, sample)
 
             else:
                 number_resistant = 0
                 selected_resistant_mutations = []
-                remaining_aa_positions = sample_gene.amino_acid_number
+                remaining_aa_positions = sample.gene.amino_acid_number
 
             # determine the susceptible mutations, if any
             if n_sus > 0:
@@ -122,7 +122,7 @@ class Batch:
                     number_susceptible,
                     selected_susceptible_mutations,
                 ) = self._get_susceptible_mutations(
-                    n_sus, remaining_aa_positions, sample_gene
+                    n_sus, remaining_aa_positions, sample
                 )
             else:
                 selected_susceptible_mutations = []
@@ -134,20 +134,12 @@ class Batch:
             )
 
             # apply the mutations to the sample gene
-            self._apply_mutations(selected_mutations, sample_gene)
-
-            # translate the nucleotide sequence to amino acids
-            sample_gene._translate_sequence()
-
-            # create a string of the amino acid sequence
-            sample_amino_acid_sequence = "".join(
-                i for i in sample_gene.amino_acid_sequence
-            )
+            sample.apply_mutations(selected_mutations)
 
             # construct the row for the sample table
             sample_metadata = [
                 n_sample,
-                sample_amino_acid_sequence,
+                sample.amino_acid_sequence,
                 label,
                 number_resistant,
                 number_susceptible,
@@ -156,8 +148,7 @@ class Batch:
             samples_rows.append(sample_metadata)
 
             # mutations dataframe
-            diff = self.reference_gene - sample_gene
-            for i in diff.mutations:
+            for i in sample.mutations:
                 if i in selected_resistant_mutations:
                     mut_label = "R"
                 else:
@@ -205,9 +196,6 @@ class Batch:
             [a + b + c for a in bases for b in bases for c in bases]
         )
         self.codon_to_amino_acid = dict(zip(all_codons, aminoacids))
-        self.amino_acid_to_codon = {}
-        for amino_acid, codon in zip(aminoacids, all_codons):
-            self.amino_acid_to_codon.setdefault(amino_acid, []).append(codon)
 
     def _get_mutations(self):
         # subset down to mutations that are missense (not premature stop) SNPs in the CDS of the gene of interest
@@ -238,7 +226,7 @@ class Batch:
 
         return label
 
-    def _get_resistant_mutations(self, n_res, distribution, sample_gene):
+    def _get_resistant_mutations(self, n_res, distribution, sample):
         # choose resistance-conferring mutations for a sample
 
         if distribution == "poisson":
@@ -276,13 +264,13 @@ class Batch:
             assert mutation[-1] != "!", "cannot mutate to STOP codon"
 
         # Get amino acid positions that are not altered by selected resistant mutations
-        remaining_aa_positions = sample_gene.amino_acid_number[
-            ~numpy.isin(sample_gene.amino_acid_number, selected_resistant_positions)
+        remaining_aa_positions = sample.gene.amino_acid_number[
+            ~numpy.isin(sample.gene.amino_acid_number, selected_resistant_positions)
         ]
 
         return number_resistant, selected_resistant_mutations, remaining_aa_positions
 
-    def _get_susceptible_mutations(self, n_sus, remaining_aa_positions, sample_gene):
+    def _get_susceptible_mutations(self, n_sus, remaining_aa_positions, sample):
         # choose susceptible mutations for a sample
 
         # randomly choose a number of susceptible mutations
@@ -295,8 +283,8 @@ class Batch:
             list(remaining_aa_positions), k=number_susceptible
         ):
             # find out the wildtype codon
-            ref_codon = sample_gene.codons[
-                sample_gene.amino_acid_number == susceptible_position
+            ref_codon = sample.gene.codons[
+                sample.gene.amino_acid_number == susceptible_position
             ][0]
 
             # find out the wildtype amino acid
@@ -325,49 +313,3 @@ class Batch:
                 )
 
         return number_susceptible, selected_susceptible_mutations
-
-    def _apply_mutations(self, selected_mutations, sample_gene):
-        # apply mutations to sample gene
-
-        for mutation in selected_mutations:
-            ref_aa = mutation[0]
-            alt_aa = mutation[-1]
-            aa_pos = int(mutation[1:-1])
-
-            assert (
-                ref_aa
-                == sample_gene.amino_acid_sequence[
-                    sample_gene.amino_acid_number == aa_pos
-                ][0]
-            ), "reference amino acid supplied in mutation does not match gene!"
-
-            assert alt_aa != "!", "cannot mutate to STOP codon"
-
-            ref_codon = sample_gene.codons[sample_gene.amino_acid_number == aa_pos][0]
-
-            # Get base changes
-            alt_codon = None
-            for codon in self.amino_acid_to_codon[alt_aa]:
-                counter = sum(1 for a, b in zip(ref_codon, codon) if a != b)
-                if counter == 1:
-                    alt_codon = codon
-                    break
-
-            base_pos = 3 * aa_pos - 2
-            for i, j in zip(ref_codon, alt_codon):
-                if i != j:
-                    ref_base = i
-                    alt_base = j
-                    break
-                base_pos += 1
-
-            assert (
-                self.reference_gene.nucleotide_sequence[
-                    self.reference_gene.nucleotide_number == base_pos
-                ][0]
-                == ref_base
-            )
-
-            sample_gene.nucleotide_sequence[
-                sample_gene.nucleotide_number == base_pos
-            ] = alt_base
