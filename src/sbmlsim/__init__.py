@@ -3,3 +3,4 @@
 __version__ = "0.0.1"
 
 from .Batch import Batch
+from .Sample import Sample
