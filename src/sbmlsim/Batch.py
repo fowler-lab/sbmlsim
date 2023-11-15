@@ -72,6 +72,117 @@ class Batch:
         # build the required Gene object
         self.reference_gene = self.reference_genome.build_gene(self.gene)
 
+    def generate(
+        self, n_samples, proportion_resistant, n_res=1, n_sus=1, distribution="poisson"
+    ):
+        """
+        Generate a batch of samples.
+
+        Args:
+            n_samples: int, number of samples to generate
+            proportion_resistant: float, proportion of samples that are resistant
+            n_res: int, mean number of resistant mutations per resistant sample
+            n_sus: int, mean number of susceptible mutations per susceptible sample
+            distribution: str, distribution to use for number of resistant mutations per resistant sample (currently only poission is implemented)
+
+        Returns:
+            samples: pandas DataFrame with one row per sample
+            mutations: pandas DataFrame with one row per mutation per drug per sample
+        """
+
+        # TODO: make this way tidier
+
+        samples_rows = []
+        mutations_rows = []
+
+        # iterate through the required number of samples
+        for n_sample in range(n_samples):
+            # make a copy of the reference gene
+            sample_gene = copy.deepcopy(self.reference_gene)
+
+            # decide the phenotype of the sample
+            label = self._get_sample_type(proportion_resistant)
+
+            # determine the resistant mutations, if any
+            if label == "R":
+                (
+                    number_resistant,
+                    selected_resistant_mutations,
+                    remaining_aa_positions,
+                ) = self._get_resistant_mutations(n_res, distribution, sample_gene)
+
+            else:
+                number_resistant = 0
+                selected_resistant_mutations = []
+                remaining_aa_positions = sample_gene.amino_acid_number
+
+            # determine the susceptible mutations, if any
+            if n_sus > 0:
+                (
+                    number_susceptible,
+                    selected_susceptible_mutations,
+                ) = self._get_susceptible_mutations(
+                    n_sus, remaining_aa_positions, sample_gene
+                )
+            else:
+                selected_susceptible_mutations = []
+                number_susceptible = 0
+
+            # combine the resistant and susceptible mutations
+            selected_mutations = (
+                selected_resistant_mutations + selected_susceptible_mutations
+            )
+
+            # apply the mutations to the sample gene
+            self._apply_mutations(selected_mutations, sample_gene)
+
+            # translate the nucleotide sequence to amino acids
+            sample_gene._translate_sequence()
+
+            # create a string of the amino acid sequence
+            sample_amino_acid_sequence = "".join(
+                i for i in sample_gene.amino_acid_sequence
+            )
+
+            # construct the row for the sample table
+            sample_metadata = [
+                n_sample,
+                sample_amino_acid_sequence,
+                label,
+                number_resistant,
+                number_susceptible,
+            ]
+
+            samples_rows.append(sample_metadata)
+
+            # mutations dataframe
+            diff = self.reference_gene - sample_gene
+            for i in diff.mutations:
+                if i in selected_resistant_mutations:
+                    mut_label = "R"
+                else:
+                    mut_label = "S"
+                mutations_rows.append([n_sample, i, mut_label, self.gene])
+
+        samples = pd.DataFrame(
+            samples_rows,
+            columns=[
+                "sample_id",
+                "allele",
+                "phenotype_label",
+                "number_resistant_mutations",
+                "number_susceptible_mutations",
+            ],
+        )
+        samples.set_index("sample_id", inplace=True)
+
+        mutations = pd.DataFrame(
+            mutations_rows, columns=["sample_id", "mutation", "mutation_label", "gene"]
+        )
+        mutations.set_index(["sample_id", "mutation"], inplace=True)
+
+        return samples, mutations
+
     def __repr__(self) -> str:
         # print a summary of the Batch object
 
@@ -260,114 +371,3 @@ class Batch:
             sample_gene.nucleotide_sequence[
                 sample_gene.nucleotide_number == base_pos
             ] = alt_base
-
-    def generate(
-        self, n_samples, proportion_resistant, n_res=1, n_sus=1, distribution="poisson"
-    ):
-        """
-        Generate a batch of samples.
-
-        Args:
-            n_samples: int, number of samples to generate
-            proportion_resistant: float, proportion of samples that are resistant
-            n_res: int, mean number of resistant mutations per resistant sample
-            n_sus: int, mean number of susceptible mutations per susceptible sample
-            distribution: str, distribution to use for number of resistant mutations per resistant sample (currently only poission is implemented)
-
-        Returns:
-            samples: pandas DataFrame with one row per sample
-            mutations: pandas DataFrame with one row per mutation per drug per sample
-        """
-
-        # TODO: make this way tidier
-
-        samples_rows = []
-        mutations_rows = []
-
-        # iterate through the required number of samples
-        for n_sample in range(n_samples):
-            # make a copy of the reference gene
-            sample_gene = copy.deepcopy(self.reference_gene)
-
-            # decide the phenotype of the sample
-            label = self._get_sample_type(proportion_resistant)
-
-            # determine the resistant mutations, if any
-            if label == "R":
-                (
-                    number_resistant,
-                    selected_resistant_mutations,
-                    remaining_aa_positions,
-                ) = self._get_resistant_mutations(n_res, distribution, sample_gene)
-
-            else:
-                number_resistant = 0
-                selected_resistant_mutations = []
-                remaining_aa_positions = sample_gene.amino_acid_number
-
-            # determine the susceptible mutations, if any
-            if n_sus > 0:
-                (
-                    number_susceptible,
-                    selected_susceptible_mutations,
-                ) = self._get_susceptible_mutations(
-                    n_sus, remaining_aa_positions, sample_gene
-                )
-            else:
-                selected_susceptible_mutations = []
-                number_susceptible = 0
-
-            # combine the resistant and susceptible mutations
-            selected_mutations = (
-                selected_resistant_mutations + selected_susceptible_mutations
-            )
-
-            # apply the mutations to the sample gene
-            self._apply_mutations(selected_mutations, sample_gene)
-
-            # translate the nucleotide sequence to amino acids
-            sample_gene._translate_sequence()
-
-            # create a string of the amino acid sequence
-            sample_amino_acid_sequence = "".join(
-                i for i in sample_gene.amino_acid_sequence
-            )
-
-            # construct the row for the sample table
-            sample_metadata = [
-                n_sample,
-                sample_amino_acid_sequence,
-                label,
-                number_resistant,
-                number_susceptible,
-            ]
-
-            samples_rows.append(sample_metadata)
-
-            # mutations dataframe
-            diff = self.reference_gene - sample_gene
-            for i in diff.mutations:
-                if i in selected_resistant_mutations:
-                    mut_label = "R"
-                else:
-                    mut_label = "S"
-                mutations_rows.append([n_sample, i, mut_label, self.gene])
-
-        samples = pd.DataFrame(
-            samples_rows,
-            columns=[
-                "sample_id",
-                "allele",
-                "phenotype_label",
-                "number_resistant_mutations",
-                "number_susceptible_mutations",
-            ],
-        )
-        samples.set_index("sample_id", inplace=True)
-
-        mutations = pd.DataFrame(
-            mutations_rows, columns=["sample_id", "mutation", "mutation_label", "gene"]
-        )
-        mutations.set_index(["sample_id", "mutation"], inplace=True)
-
-        return samples, mutations
