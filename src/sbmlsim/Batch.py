@@ -242,9 +242,14 @@ class Batch:
         # choose resistance-conferring mutations for a sample
 
         if distribution == "poisson":
-            number_resistant = 0
-            while number_resistant == 0:
+
+            while True:
                 number_resistant = numpy.random.poisson(n_res)
+                if number_resistant > 0 and number_resistant <= len(
+                    self.resistant_positions
+                ):
+                    break
+
         else:
             # TODO: Implement other distribution functions
             raise NotImplementedError(
@@ -339,7 +344,10 @@ class Batch:
                 == sample_gene.amino_acid_sequence[
                     sample_gene.amino_acid_number == aa_pos
                 ][0]
-            ), "reference amino acid supplied in mutation does not match gene!"
+            ), (
+                "reference amino acid supplied in mutation does not match gene! :"
+                + mutation
+            )
 
             assert alt_aa != "!", "cannot mutate to STOP codon"
 
@@ -348,6 +356,7 @@ class Batch:
             # Get base changes
             alt_codon = None
             for codon in self.amino_acid_to_codon[alt_aa]:
+                alt_codon = codon
                 counter = sum(1 for a, b in zip(ref_codon, codon) if a != b)
                 if counter == 1:
                     alt_codon = codon
