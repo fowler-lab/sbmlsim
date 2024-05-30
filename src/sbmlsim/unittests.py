@@ -1,25 +1,29 @@
 import unittest
+import pkg_resources
 import pandas as pd
 from sbmlsim import Batch  # assuming Batch is the class you want to test
 
 
 class TestBatch(unittest.TestCase):
     def setUp(self):
+
+        genbank_file = pkg_resources.resource_filename(
+            "sbmlsim", "data/NC_045512.2.gbk.gz"
+        )
+
         # Create an instance of Batch to use in tests
         self.batch1 = Batch(
-            gene="pncA",
+            gene="S",
             drug="PZA",
-            # catalogue_file = 'NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv',
-            genbank_file="/Users/viktoriabrunner/Documents/Studium/PhD/DPhil/sbmlsim/NC_000962.3.gbk",
-            resistant_mutations=["pncA@D8N"],
+            genbank_file=genbank_file,
+            resistant_mutations=["S@F2L"],
         )
 
         self.batch2 = Batch(
-            gene=["pncA", "rpoB"],
+            gene=["S", "ORF3a"],
             drug=["PZA", "RIF"],
-            # catalogue_file = 'NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv',
-            genbank_file="/Users/viktoriabrunner/Documents/Studium/PhD/DPhil/sbmlsim/NC_000962.3.gbk",
-            resistant_mutations=["pncA@D8N", "rpoB@S450L"],
+            genbank_file=genbank_file,
+            resistant_mutations=["S@V3L", "ORF3a@F4L"],
         )
 
     def test_generate_R(self):
@@ -31,7 +35,7 @@ class TestBatch(unittest.TestCase):
             n_sus=0,
             distribution="poisson",
         )
-        sequence.drop(columns=["pncA"], inplace=True)
+        sequence.drop(columns=["S"], inplace=True)
         expected_sequence = pd.DataFrame(
             {
                 "sample_id": [0],
@@ -45,8 +49,8 @@ class TestBatch(unittest.TestCase):
         expected_mutation = pd.DataFrame(
             {
                 "sample_id": [0],
-                "mutation": ["D8N"],
-                "gene": ["pncA"],
+                "mutation": ["F2L"],
+                "gene": ["S"],
                 "mutation_label": ["R"],
             }
         )
@@ -65,7 +69,7 @@ class TestBatch(unittest.TestCase):
             n_sus=1,
             distribution="poisson",
         )
-        sequence.drop(columns=["pncA", "number_susceptible_mutations"], inplace=True)
+        sequence.drop(columns=["S", "number_susceptible_mutations"], inplace=True)
         mutation.reset_index(inplace=True)
         mutation.drop(columns=["mutation"], inplace=True)
         mutation.set_index(["sample_id", "gene"], inplace=True)
@@ -169,8 +173,8 @@ class TestBatch(unittest.TestCase):
             "phenotype_label",
             "number_resistant_mutations",
             "number_susceptible_mutations",
-            "pncA",
-            "rpoB",
+            "S",
+            "ORF3a",
         ]
 
 
