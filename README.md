@@ -1,3 +1,5 @@
+[![Tests](https://github.com/fowler-lab/sbmlsim/actions/workflows/tests.yaml/badge.svg)](https://github.com/fowler-lab/sbmlsim/actions/workflows/tests.yaml)
+
 # sbmlsim
 Create upsampled/artificial datasets of bacterial alleles for training machine learning models
 
