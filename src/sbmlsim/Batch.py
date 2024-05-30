@@ -112,10 +112,28 @@ class Batch:
             mutations: pandas DataFrame with one row per mutation per drug per sample
         """
 
-        # TODO: make this way tidier
+        if not isinstance(n_samples, int) or n_samples <= 0:
+            raise ValueError("n_samples must be a positive integer")
+
+        if not isinstance(n_res, int) or n_res < 0:
+            raise ValueError("n_res must be a non-negative integer")
+
+        if not isinstance(n_sus, int) or n_sus < 0:
+            raise ValueError("n_sus must be a non-negative integer")
+
+        if (
+            not isinstance(proportion_resistant, int)
+            or proportion_resistant < 0
+            or proportion_resistant > 1
+        ):
+            raise ValueError("proportion_resistant must be an integer between 0 and 1")
 
         samples_rows = []
         mutations_rows = []
+
+        # check that if proportion_resistant > 0, n_res > 0
+        if proportion_resistant > 0:
+            assert n_res > 0, "if proportion_resistant > 0, n_res must be > 0"
 
         # iterate through the required number of samples
         for n_sample in range(n_samples):
