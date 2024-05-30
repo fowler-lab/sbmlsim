@@ -122,11 +122,10 @@ class Batch:
             raise ValueError("n_sus must be a non-negative integer")
 
         if (
-            not isinstance(proportion_resistant, int)
-            or proportion_resistant < 0
+            proportion_resistant < 0
             or proportion_resistant > 1
         ):
-            raise ValueError("proportion_resistant must be an integer between 0 and 1")
+            raise ValueError("proportion_resistant must be between 0 and 1")
 
         samples_rows = []
         mutations_rows = []
