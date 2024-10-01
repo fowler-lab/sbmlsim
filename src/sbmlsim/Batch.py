@@ -48,8 +48,10 @@ class Batch:
 
         # allow a user to either provide a catalogue file or a list of resistant mutations
         assert bool(catalogue_file) != bool(resistant_mutations
-                    ) and bool(catalogue_file) != bool(susceptible_mutations
                     ), "Either catalogue_file or resistant_mutations must be specified"
+        
+        if catalogue_file:
+            assert susceptible_mutations is None, "susceptible_mutations will not be used if a catalogue file is provided"
 
         if catalogue_file is not None:
             self.catalogue = piezo.ResistanceCatalogue(catalogue_file)
