@@ -19,7 +19,7 @@ class Batch:
         resistant_mutations: list of str, list of mutations in the format 'gene@mutation'
 
     Example:
-        sbmlsim.batch(gene="gyrA", drug="ciprofloxacin", catalogue_file="catalogue.csv", genbank_file="NC_000962.3.gbk")
+        sbmlsim.Batch(gene="gyrA", drug="ciprofloxacin", catalogue_file="catalogue.csv", genbank_file="NC_000962.3.gbk")
     """
 
     def __init__(
@@ -29,6 +29,7 @@ class Batch:
         catalogue_file=None,
         genbank_file=None,
         resistant_mutations=None,
+        susceptible_mutations=None,
     ):
 
         self.gene = gene
@@ -46,25 +47,35 @@ class Batch:
         self.catalogue_file = catalogue_file
 
         # allow a user to either provide a catalogue file or a list of resistant mutations
-        assert (catalogue_file is not None) != (
-            resistant_mutations is not None
-        ), "Either catalogue_file or resistant_mutations must be specified"
+        assert bool(catalogue_file) != bool(resistant_mutations
+                    ) and bool(catalogue_file) != bool(susceptible_mutations
+                    ), "Either catalogue_file or resistant_mutations must be specified"
 
         if catalogue_file is not None:
             self.catalogue = piezo.ResistanceCatalogue(catalogue_file)
-            resistant_mutations = self._get_mutations()  # make this an argument
+            resistant_mutations = self._get_mutations("R")  # make this an argument
+            susceptible_mutations = self._get_mutations("S")
         else:
             assert isinstance(resistant_mutations, list)
             # check that the strings have the format "gene@mutation"
             assert all(
                 "@" in x for x in resistant_mutations
             ), "resistant_mutations must be in the format 'gene@mutation'"
-
-            resistant_mutations = resistant_mutations
+            
+            if susceptible_mutations:
+                assert isinstance(susceptible_mutations, list)
+                assert all(
+                    "@" in x for x in susceptible_mutations
+                ), "susceptible_mutations must be in the format 'gene@mutation'"
 
         self.resistant_mutations = pd.DataFrame(
             [x.split("@") for x in resistant_mutations], columns=["gene", "mutation"]
         )
+        
+        if susceptible_mutations:
+            self.susceptible_mutations = pd.DataFrame(
+                [x.split("@") for x in susceptible_mutations], columns=["gene", "mutation"]
+            )
 
         # extract the position of each mutation
         def find_positions(row):
@@ -237,6 +248,8 @@ class Batch:
             line += f"Catalogue: {self.catalogue_file}\n"
         if hasattr(self, "resistant_mutations"):
             line += f"Number of resistant mutations: {len(self.resistant_mutations)}\n"
+        if hasattr(self, "susceptible_mutations"):
+            line += f"Number of susceptible mutations: {len(self.susceptible_mutations)}\n"
         return line
 
     def _define_lookups(self):
@@ -252,11 +265,12 @@ class Batch:
         for amino_acid, codon in zip(aminoacids, all_codons):
             self.amino_acid_to_codon.setdefault(amino_acid, []).append(codon)
 
-    def _get_mutations(self):
+    def _get_mutations(self, phenotype:str):
         # subset down to mutations that are missense (not premature stop) SNPs in the CDS of the gene of interest
-
+        assert phenotype in ["R", "S"], "phenotype must be 'R' or 'S'"
+        
         specific_resistance_mutations = self.catalogue.catalogue.rules[
-            (self.catalogue.catalogue.rules.PREDICTION == "R")
+            (self.catalogue.catalogue.rules.PREDICTION == phenotype)
             & (self.catalogue.catalogue.rules.MUTATION_TYPE == "SNP")
             & (self.catalogue.catalogue.rules.MUTATION_AFFECTS == "CDS")
             & (self.catalogue.catalogue.rules.MUTATION.str[-1] != "!")
