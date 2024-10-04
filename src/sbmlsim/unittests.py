@@ -1,7 +1,7 @@
 import unittest
 import pkg_resources
 import pandas as pd
-from sbmlsim import Batch  # assuming Batch is the class you want to test
+from sbmlsim import Batch
 
 
 class TestBatch(unittest.TestCase):
@@ -12,6 +12,10 @@ class TestBatch(unittest.TestCase):
         )
         genbank_file2 = pkg_resources.resource_filename(
             "sbmlsim", "data/NC_000962.3.gbk.gz"
+        )
+
+        catalogue_file = pkg_resources.resource_filename(
+            "sbmlsim", "data/NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv"
         )
 
         # Create an instance of Batch to use in tests
@@ -32,7 +36,7 @@ class TestBatch(unittest.TestCase):
         self.batch3 = Batch(
             gene="pncA",
             drug="PZA",
-            catalogue_file="data/NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv",
+            catalogue_file=catalogue_file,
             genbank_file=genbank_file2,
             ignore_catalogue_susceptibles=False,
         )
@@ -40,8 +44,8 @@ class TestBatch(unittest.TestCase):
         self.batch4 = Batch(
             gene="pncA",
             drug="PZA",
-            resistant_mutations=["pncA@M1V"]["S@F2L"],
-            susceptible_mutations=["pncA@M1A", "pncA@R2A"],
+            resistant_mutations=["pncA@M1V"],
+            susceptible_mutations=["pncA@M1A", "pncA@R2G"],
             genbank_file=genbank_file2,
         )
 
