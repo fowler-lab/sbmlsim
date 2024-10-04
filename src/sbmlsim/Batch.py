@@ -533,29 +533,35 @@ class Batch:
             ref_codon = current_gene.codons[current_gene.amino_acid_number == aa_pos][0]
 
             # Get base changes
-            alt_codon = None
+            min_diff = 4
+            possible_codons = {}
             for codon in self.amino_acid_to_codon[alt_aa]:
-                alt_codon = codon
+                # alt_codon = codon
                 counter = sum(1 for a, b in zip(ref_codon, codon) if a != b)
-                if counter == 1:
-                    alt_codon = codon
-                    break
+                if counter < min_diff:
+                    min_diff = counter
+                    if counter in possible_codons:
+                        possible_codons[counter].append(codon)
+                    else:
+                        possible_codons[counter] = [codon]
+            alt_codon = random.sample(possible_codons[min_diff], k=1)[0]
 
             base_pos = 3 * aa_pos - 2
             for i, j in zip(ref_codon, alt_codon):
                 if i != j:
                     ref_base = i
                     alt_base = j
-                    break
+
+                    assert (
+                        self.reference_gene[gene_index].nucleotide_sequence[
+                            self.reference_gene[gene_index].nucleotide_number
+                            == base_pos
+                        ][0]
+                        == ref_base
+                    )
+
+                    sample_gene[gene_index].nucleotide_sequence[
+                        sample_gene[gene_index].nucleotide_number == base_pos
+                    ] = alt_base
+
                 base_pos += 1
-
-            assert (
-                self.reference_gene[gene_index].nucleotide_sequence[
-                    self.reference_gene[gene_index].nucleotide_number == base_pos
-                ][0]
-                == ref_base
-            )
-
-            sample_gene[gene_index].nucleotide_sequence[
-                sample_gene[gene_index].nucleotide_number == base_pos
-            ] = alt_base
