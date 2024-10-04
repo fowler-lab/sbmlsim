@@ -1,7 +1,7 @@
 import unittest
 import pkg_resources
 import pandas as pd
-from sbmlsim import Batch  # assuming Batch is the class you want to test
+from sbmlsim import Batch
 
 
 class TestBatch(unittest.TestCase):
@@ -9,6 +9,13 @@ class TestBatch(unittest.TestCase):
 
         genbank_file = pkg_resources.resource_filename(
             "sbmlsim", "data/NC_045512.2.gbk.gz"
+        )
+        genbank_file2 = pkg_resources.resource_filename(
+            "sbmlsim", "data/NC_000962.3.gbk.gz"
+        )
+
+        catalogue_file = pkg_resources.resource_filename(
+            "sbmlsim", "data/NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv"
         )
 
         # Create an instance of Batch to use in tests
@@ -24,6 +31,22 @@ class TestBatch(unittest.TestCase):
             drug=["PZA", "RIF"],
             genbank_file=genbank_file,
             resistant_mutations=["S@V3L", "ORF3a@F4L"],
+        )
+
+        self.batch3 = Batch(
+            gene="pncA",
+            drug="PZA",
+            catalogue_file=catalogue_file,
+            genbank_file=genbank_file2,
+            ignore_catalogue_susceptibles=False,
+        )
+
+        self.batch4 = Batch(
+            gene="pncA",
+            drug="PZA",
+            resistant_mutations=["pncA@M1V"],
+            susceptible_mutations=["pncA@M1A", "pncA@R2G"],
+            genbank_file=genbank_file2,
         )
 
     def test_generate_R(self):
@@ -176,6 +199,41 @@ class TestBatch(unittest.TestCase):
             "S",
             "ORF3a",
         ]
+
+    def test_generate_S_from_catalogue(self):
+        sequence, mutations = self.batch3.generate(
+            n_samples=1,
+            proportion_resistant=0,
+            n_res=0,
+            n_sus=5,
+        )
+
+        mutations.reset_index(inplace=True)
+        self.assertTrue(
+            mutations["mutation"]
+            .isin(self.batch3.susceptible_mutations["mutation"])
+            .all()
+        )
+
+    def test_generate_S_from_list(self):
+        sequence, mutations = self.batch4.generate(
+            n_samples=1,
+            proportion_resistant=1,
+            n_res=1,
+            n_sus=5,
+        )
+
+        mutations.reset_index(inplace=True)
+        self.assertTrue(
+            mutations[mutations["mutation_label"] == "S"]["mutation"]
+            .isin(self.batch4.susceptible_mutations["mutation"])
+            .all()
+        )
+        self.assertTrue(
+            mutations[mutations["mutation_label"] == "R"]["mutation"]
+            .isin(self.batch4.resistant_mutations["mutation"])
+            .all()
+        )
 
 
 if __name__ == "__main__":
