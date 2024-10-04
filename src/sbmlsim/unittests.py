@@ -26,6 +26,22 @@ class TestBatch(unittest.TestCase):
             resistant_mutations=["S@V3L", "ORF3a@F4L"],
         )
 
+        self.batch3 = Batch(
+            gene="pncA",
+            drug="PZA",
+            catalogue_file="NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv",
+            genbank_file="src/sbmlsim/data/NC_000962.3.gbk.gz",
+            ignore_catalogue_susceptibles=False,
+        )
+
+        self.batch4 = Batch(
+            gene="pncA",
+            drug="PZA",
+            resistant_mutations=["pncA@M1V"],
+            susceptible_mutations=["pncA@M1A", "pncA@R2A"],
+            genbank_file="src/sbmlsim/data/NC_000962.3.gbk.gz",
+        )
+
     def test_generate_R(self):
         # Test generate method for one resistant sample of the Batch class
         sequence, mutation = self.batch1.generate(
@@ -176,6 +192,41 @@ class TestBatch(unittest.TestCase):
             "S",
             "ORF3a",
         ]
+
+    def test_generate_S_from_catalogue(self):
+        sequence, mutations = self.batch3.generate(
+            n_samples=1,
+            proportion_resistant=0,
+            n_res=0,
+            n_sus=25,
+        )
+
+        mutations.reset_index(inplace=True)
+        self.assertTrue(
+            mutations["mutation"]
+            .isin(self.batch3.susceptible_mutations["mutation"])
+            .all()
+        )
+
+    def test_generate_S_from_list(self):
+        sequence, mutations = self.batch4.generate(
+            n_samples=1,
+            proportion_resistant=1,
+            n_res=1,
+            n_sus=10,
+        )
+
+        mutations.reset_index(inplace=True)
+        self.assertTrue(
+            mutations[mutations["mutation_label"] == "S"]["mutation"]
+            .isin(self.batch3.susceptible_mutations["mutation"])
+            .all()
+        )
+        self.assertTrue(
+            mutations[mutations["mutation_label"] == "R"]["mutation"]
+            .isin(self.batch3.resistant_mutations["mutation"])
+            .all()
+        )
 
 
 if __name__ == "__main__":
