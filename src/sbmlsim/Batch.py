@@ -334,48 +334,6 @@ class Batch:
     def _get_resistant_mutations(self, n_res, distribution, sample_gene):
         # choose resistance-conferring mutations for a sample
 
-        # if distribution == "poisson":
-
-        #     while True:
-        #         number_resistant = numpy.random.poisson(n_res)
-        #         if number_resistant > 0 and number_resistant <= len(
-        #             self.resistant_positions
-        #         ):
-        #             break
-
-        # else:
-        #     # TODO: Implement other distribution functions
-        #     raise NotImplementedError(
-        #         'Only "poisson" distribution is currently implemented'
-        #     )
-
-        # assert (
-        #     number_resistant >= 0
-        # ), "a resistant sample must have at least one resistance-conferring mutation"
-
-        # # randomly choose some positions to mutate
-        # selected_resistant_positions = random.sample(
-        #     self.resistant_positions, k=number_resistant
-        # )
-
-        # # for each position, randomly choose a mutation to allow for a position having more than one mutation
-        # selected_resistant_mutations = []
-        # for i in selected_resistant_positions:
-        #     df = self.resistant_mutations[self.resistant_mutations.position == i]
-        #     row = df.sample(n=1)
-        #     value = row.gene.values[0] + "@" + row.mutation.values[0]
-        #     selected_resistant_mutations.append(value)
-
-        # assert len(selected_resistant_mutations) == len(
-        #     set(selected_resistant_mutations)
-        # ), "cannot have duplicate mutations"
-
-        # # insist we cannot mutate to Stop codons
-        # for mutation in selected_resistant_mutations:
-        #     assert mutation[-1] != "!", "cannot mutate to STOP codon"
-
-        # Get amino acid positions that are not altered by selected resistant mutations
-
         (number_resistant, 
         selected_resistant_mutations, 
         selected_resistant_positions 
@@ -383,6 +341,7 @@ class Batch:
                                         n=n_res,
                                         distribution=distribution)
         
+        # Get amino acid positions that are not altered by selected resistant mutations
         remaining_aa_positions = [
             f"{gene.name}@{pos}"
             for gene in sample_gene
@@ -416,7 +375,6 @@ class Batch:
             # now randomly choose from positions which have no resistant-conferring mutation
             for susceptible_position in random.sample(
                 list(remaining_aa_positions), k=number_susceptible
-                # positions, k=number_susceptible
             ):
                 # find out the wildtype codon
                 gene_name, susceptible_position = susceptible_position.split("@")
@@ -474,32 +432,7 @@ class Batch:
                                distribution, 
                                remaining_aa_positions=None):
 
-        if distribution == "poisson":
-
-            while True:
-                number_mutations = numpy.random.poisson(n)
-                if label == 'R':
-                    if number_mutations > 0 and number_mutations <= len(
-                        self.resistant_positions
-                    ):
-                        break
-                if label == 'S':
-                    if number_mutations <= len(
-                        self.susceptible_positions
-                    ):
-                        break
-
-        else:
-            # TODO: Implement other distribution functions
-            raise NotImplementedError(
-                'Only "poisson" distribution is currently implemented'
-            )
-
         if label == 'R':
-            assert (
-                number_mutations >= 0
-            ), "a resistant sample must have at least one resistance-conferring mutation"
-
             mutation_positions = self.resistant_positions
             mutations = self.resistant_mutations
             
@@ -507,9 +440,32 @@ class Batch:
             assert remaining_aa_positions is not None, "remaining aa's needed for S mutations"
             mutation_positions = [p for p in self.susceptible_positions if p in remaining_aa_positions]
             mutations = self.susceptible_mutations[self.susceptible_mutations['position'].isin(remaining_aa_positions)]
-            
-            #! make mutations and mutation_positions only from remaining_aa_positions
         
+        
+        if distribution == "poisson":
+
+            while True:
+                number_mutations = numpy.random.poisson(n)
+                if label == 'R':
+                    if number_mutations > 0 and number_mutations <= len(
+                        mutation_positions
+                    ):
+                        break
+                if label == 'S':
+                    if number_mutations <= len(mutation_positions):
+                        break
+
+        else:
+            # TODO: Implement other distribution functions
+            raise NotImplementedError(
+                'Only "poisson" distribution is currently implemented'
+            )
+            
+        if label == 'R':
+            assert (
+                number_mutations >= 0
+            ), "a resistant sample must have at least one resistance-conferring mutation"
+            
         # randomly choose some positions to mutate
         selected_positions = random.sample(
             mutation_positions, k=number_mutations
