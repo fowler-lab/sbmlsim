@@ -198,7 +198,7 @@ class TestBatch(unittest.TestCase):
             n_samples=1,
             proportion_resistant=0,
             n_res=0,
-            n_sus=25,
+            n_sus=5,
         )
 
         mutations.reset_index(inplace=True)
@@ -213,18 +213,18 @@ class TestBatch(unittest.TestCase):
             n_samples=1,
             proportion_resistant=1,
             n_res=1,
-            n_sus=10,
+            n_sus=5,
         )
 
         mutations.reset_index(inplace=True)
         self.assertTrue(
             mutations[mutations["mutation_label"] == "S"]["mutation"]
-            .isin(self.batch3.susceptible_mutations["mutation"])
+            .isin(self.batch4.susceptible_mutations["mutation"])
             .all()
         )
         self.assertTrue(
             mutations[mutations["mutation_label"] == "R"]["mutation"]
-            .isin(self.batch3.resistant_mutations["mutation"])
+            .isin(self.batch4.resistant_mutations["mutation"])
             .all()
         )
 
