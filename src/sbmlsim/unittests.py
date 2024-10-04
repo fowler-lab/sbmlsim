@@ -10,6 +10,9 @@ class TestBatch(unittest.TestCase):
         genbank_file = pkg_resources.resource_filename(
             "sbmlsim", "data/NC_045512.2.gbk.gz"
         )
+        genbank_file2 = pkg_resources.resource_filename(
+            "sbmlsim", "data/NC_000962.3.gbk.gz"
+        )
 
         # Create an instance of Batch to use in tests
         self.batch1 = Batch(
@@ -29,17 +32,17 @@ class TestBatch(unittest.TestCase):
         self.batch3 = Batch(
             gene="pncA",
             drug="PZA",
-            catalogue_file="NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv",
-            genbank_file="src/sbmlsim/data/NC_000962.3.gbk.gz",
+            catalogue_file="data/NC_000962.3_WHO-UCN-GTB-PCI-2021.7_v1.0_GARC1_RUS.csv",
+            genbank_file=genbank_file2,
             ignore_catalogue_susceptibles=False,
         )
 
         self.batch4 = Batch(
             gene="pncA",
             drug="PZA",
-            resistant_mutations=["pncA@M1V"],
+            resistant_mutations=["pncA@M1V"]["S@F2L"],
             susceptible_mutations=["pncA@M1A", "pncA@R2A"],
-            genbank_file="src/sbmlsim/data/NC_000962.3.gbk.gz",
+            genbank_file=genbank_file2,
         )
 
     def test_generate_R(self):
