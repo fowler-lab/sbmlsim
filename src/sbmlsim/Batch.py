@@ -462,7 +462,9 @@ class Batch:
                     ):
                         break
                 if label == "S":
-                    if number_mutations <= len(mutation_positions):
+                    if number_mutations > 0 and number_mutations <= len(
+                        mutation_positions
+                    ):
                         break
 
         else:
