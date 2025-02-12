@@ -342,7 +342,9 @@ class Batch:
             number_resistant,
             selected_resistant_mutations,
             selected_resistant_positions,
-        ) = self._get_defined_mutations(label="R", n=n_res, sample_label = 'R', distribution=distribution)
+        ) = self._get_defined_mutations(
+            label="R", n=n_res, sample_label="R", distribution=distribution
+        )
 
         # Get amino acid positions that are not altered by selected resistant mutations
         remaining_aa_positions = [
@@ -354,7 +356,9 @@ class Batch:
 
         return number_resistant, selected_resistant_mutations, remaining_aa_positions
 
-    def _get_susceptible_mutations(self, n_sus, remaining_aa_positions, sample_gene, sample_label):
+    def _get_susceptible_mutations(
+        self, n_sus, remaining_aa_positions, sample_gene, sample_label
+    ):
         # choose susceptible mutations for a sample
 
         if self.define_susceptibles:
@@ -437,8 +441,10 @@ class Batch:
     def _get_defined_mutations(
         self, label, n, distribution, sample_label, remaining_aa_positions=None
     ):
-        
-        assert not (label == 'R' and sample_label == 'S'), "Cannot have resistant mutations in a susceptible sample"
+
+        assert not (
+            label == "R" and sample_label == "S"
+        ), "Cannot have resistant mutations in a susceptible sample"
 
         if label == "R":
             mutation_positions = self.resistant_positions
@@ -460,14 +466,16 @@ class Batch:
             while True:
                 number_mutations = numpy.random.poisson(n)
                 if label == "R":
-                    if 0 < number_mutations <= len(
+                    if 0 < number_mutations <= len(mutation_positions):
+                        break
+                if label == "S":
+                    if sample_label == "S" and 0 < number_mutations <= len(
                         mutation_positions
                     ):
                         break
-                if label == 'S':
-                    if sample_label == 'S' and 0 < number_mutations <= len(mutation_positions):
-                        break
-                    if sample_label == 'R' and number_mutations <= len(mutation_positions):
+                    if sample_label == "R" and number_mutations <= len(
+                        mutation_positions
+                    ):
                         break
 
         else:
